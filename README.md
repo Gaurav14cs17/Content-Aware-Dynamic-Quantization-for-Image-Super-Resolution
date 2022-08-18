@@ -1,0 +1,2 @@
+# Content-Aware-Dynamic-Quantization-for-Image-Super-Resolution
+The overview of the proposed quantization framework CADyQ for SR network, which we illustrate with a residual block based backbone. For each given patch and each layer, our CADyQ module introduces a light-weight bit selector that dynamically selects the bit-width and its corresponding quantization function  among the candidate quantization functions with distinct bit-widths. 
