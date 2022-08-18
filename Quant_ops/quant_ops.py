@@ -9,15 +9,19 @@ import torch
 import torch.nn as nn
 from torch.autograd import Function as F
 
+
 def _ntuple(n):
     def parse(x):
         if isinstance(x, collections.Iterable):
             return x
         return tuple(repeat(x, n))
+
     return parse
 
 
 _pair = _ntuple(2)
+
+
 def quant_max(tensor):
     """
        Returns the max value for symmetric quantization.
@@ -29,14 +33,17 @@ def TorchRound():
     """
     Apply STE to clamp function.
     """
+
     class identity_quant(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
             out = torch.round(input)
             return out
+
         @staticmethod
         def backward(ctx, grad_output):
             return grad_output
+
     return identity_quant().apply
 
 
@@ -44,6 +51,7 @@ class quant_weight(nn.Module):
     """
     Quantization function for quantize weight with maximum.
     """
+
     def __init__(self, k_bits):
         super(quant_weight, self).__init__()
         self.k_bits = k_bits
@@ -62,6 +70,7 @@ class quant_act_pams(nn.Module):
     """
        Quantization function for quantize activation with parameterized max scale.
     """
+
     def __init__(self, k_bits, ema_epoch=1, decay=0.9997, is_teacher=False, rel_shift=False):
         super(quant_act_pams, self).__init__()
         self.decay = decay
@@ -132,10 +141,10 @@ class quant_act_lin(nn.Module):
 
 class QuantConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                    padding=0, dilation=1, groups=1, bias=False,k_bits=32,):
+                 padding=0, dilation=1, groups=1, bias=False, k_bits=32, ):
         super(QuantConv2d, self).__init__()
 
-        self.weight = nn.Parameter(torch.Tensor(out_channels , in_channels//groups, kernel_size, kernel_size))
+        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels // groups, kernel_size, kernel_size))
         self.stride = stride
         self.padding = padding
         self.dilation = dilation
@@ -156,17 +165,17 @@ class QuantConv2d(nn.Module):
     def reset_parameters(self):
         n = self.in_channels
         for k in self.kernel_size:
-            n = n*k
-        stdv = 1./math.sqrt(n)
-        self.weight.data.uniform_(-stdv , stdv)
+            n = n * k
+        stdv = 1. / math.sqrt(n)
+        self.weight.data.uniform_(-stdv, stdv)
         if self.bias is not None:
-            self.bias.data.uniform_(-stdv , stdv)
+            self.bias.data.uniform_(-stdv, stdv)
 
     def reset_parameter(self):
-        stdv = 1.0 /math.sqrt(self.weight.size(0))
-        self.weight.data.uniform_(-stdv , stdv)
+        stdv = 1.0 / math.sqrt(self.weight.size(0))
+        self.weight.data.uniform_(-stdv, stdv)
         if self.bias_flag:
-            nn.init.constant_(self.bias , 0.0)
+            nn.init.constant_(self.bias, 0.0)
 
     def forward(self, input, bits=None, order=None):
         if bits is not None:
@@ -174,7 +183,8 @@ class QuantConv2d(nn.Module):
                 for i in range(input.size(0)):
                     self.quant_weight = quant_weight(k_bits=bits[i])
                     weight_q = self.quant_weight(self.weight)
-                    out = nn.functional.conv2d(input[i].unsqueeze(0), weight_q, self.bias, self.stride, self.padding,self.dilation, self.groups)
+                    out = nn.functional.conv2d(input[i].unsqueeze(0), weight_q, self.bias, self.stride, self.padding,
+                                               self.dilation, self.groups)
                     if i == 0:
                         out_stacked = out
                     else:
@@ -185,11 +195,23 @@ class QuantConv2d(nn.Module):
                 # this works for weight during inference (batch=1) but not for training
                 # for training, use group conv to take different bit for different batch index
 
-        return nn.functional.conv2d(input, self.quant_weight(self.weight), self.bias, self.stride, self.padding,self.dilation, self.groups)
+        return nn.functional.conv2d(input, self.quant_weight(self.weight), self.bias, self.stride, self.padding,
+                                    self.dilation, self.groups)
 
 
+def conv3x3(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True):
+    return nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=padding, bias=bias)
 
 
+def quant_conv3x3(in_channels, out_channels, kernel_size=3, padding=1, stride=1, k_bits=32, bias=False, groups=1):
+    return QuantConv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride,
+                       padding=padding, k_bits=k_bits, bias=bias, groups=groups)
 
 
+def conv9x9(in_channels, out_channels, kernel_size=9, stride=1, padding=4, bias=False):
+    return nn.Conv2d(in_channels, out_channels, kernel_size=9, stride=stride, padding=padding, bias=bias)
 
+
+def quant_conv9x9(in_channels, out_channels, kernel_size=9, stride=1, padding=4, bias=False, k_bits=32):
+    return QuantConv2d(in_channels, out_channels, kernel_size=9, stride=stride, padding=padding, bias=bias,
+                       k_bits=k_bits)
